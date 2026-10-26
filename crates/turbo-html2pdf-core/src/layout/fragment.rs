@@ -225,9 +225,10 @@ pub struct Fragment {
     /// context, and (with a `z-index`) participates in z ordering.
     pub is_positioned: bool,
     /// Cross-reference payload (`xref` feature, AC-3.25): the destination name
-    /// of a `<t:anchor name>` that landed here, and/or the `#fragment` target of
-    /// an `<a href>` whose box this is. Only present under `--features xref`; the
-    /// default build does not carry these fields, so its galley is unchanged.
+    /// of a `<t:anchor name>` / HTML `id` that landed here, and/or the internal
+    /// `#fragment` or external URI target of an `<a href>` whose box this is.
+    /// Only present under `--features xref`; the default build does not carry
+    /// these fields, so its galley is unchanged.
     #[cfg(feature = "xref")]
     pub xref: XrefMeta,
     /// The PDF/UA structure role this fragment carries (`pdf-ua` feature). `None`
@@ -242,15 +243,18 @@ pub struct Fragment {
 }
 
 /// Cross-reference data a fragment carries when the `xref` feature is on: an
-/// optional named destination it defines and an optional internal-link target it
-/// activates. Boxed into one struct so the gated field is a single addition.
+/// optional named destination it defines and an optional internal or external
+/// link target it activates. Boxed into one struct so the gated field is a
+/// single addition.
 #[cfg(feature = "xref")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct XrefMeta {
-    /// The `name` of a `<t:anchor name>` positioned at this fragment.
+    /// The `name` of a `<t:anchor name>` (or HTML `id` / `<a name>`) positioned at this fragment.
     pub anchor: Option<String>,
     /// The bare destination name from an `<a href="#name">` whose box this is.
     pub link_href: Option<String>,
+    /// The external URI from an `<a href="…">` (non-`#`, non-empty) whose box this is.
+    pub link_uri: Option<String>,
 }
 
 impl Fragment {

@@ -1219,29 +1219,11 @@ fn layout_box_sized_impl(
         z_index: bs.z_index,
         is_positioned: bs.position != Position::Static,
         #[cfg(feature = "xref")]
-        xref: box_xref(lb),
+        xref: super::boxgen::xref::box_xref(lb),
         #[cfg(feature = "pdf-ua")]
         role: lb.ua_role,
         #[cfg(feature = "pdf-ua")]
         alt: None,
-    }
-}
-
-/// The cross-reference payload for a box fragment: the `#name` target of an
-/// `<a href="#name">` whose box this is, drawn from the box's HTML attributes
-/// (`xref` feature, AC-3.25).
-#[cfg(feature = "xref")]
-fn box_xref(lb: &LayoutBox) -> super::fragment::XrefMeta {
-    let link_href = lb
-        .attrs
-        .iter()
-        .find(|a| a.name == "href")
-        .and_then(|a| a.value.strip_prefix('#'))
-        .filter(|t| !t.is_empty())
-        .map(str::to_string);
-    super::fragment::XrefMeta {
-        anchor: None,
-        link_href,
     }
 }
 
@@ -1403,7 +1385,7 @@ fn image_fragment(lb: &LayoutBox, bx: f32, by: f32, sized: &SizedImage, bs: &Box
         z_index: bs.z_index,
         is_positioned: bs.position != Position::Static,
         #[cfg(feature = "xref")]
-        xref: super::fragment::XrefMeta::default(),
+        xref: super::boxgen::xref::box_xref(lb),
         #[cfg(feature = "pdf-ua")]
         role: lb.ua_role,
         #[cfg(feature = "pdf-ua")]

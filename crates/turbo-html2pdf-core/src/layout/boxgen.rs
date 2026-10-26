@@ -350,9 +350,10 @@ fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
         return Some(Level::Inline(vec![InlineItem::LineBreak]));
     }
     #[cfg(feature = "xref")]
-    if xref::internal_link_href(el).is_some() {
-        // An `<a href="#name">` is laid out as an atomic inline box so it carries
-        // its own fragment (and thus a link rectangle) through layout (AC-3.25).
+    if xref::is_inline_xref_box(el) {
+        // An inline `<a href="…">` or anchored element is laid out as an atomic
+        // inline box so it carries its own fragment (and thus a link rectangle or
+        // destination position) through layout (AC-3.25).
         return Some(Level::Inline(vec![InlineItem::Atomic(build_block_box(
             el, ids,
         ))]));
@@ -716,12 +717,12 @@ pub fn build_box_tree(styled: &[StyledNode]) -> LayoutBox {
 #[path = "boxgen_ua.rs"]
 mod ua;
 
-/// `xref`-feature box-generation helpers (anchor names + internal link hrefs,
+/// `xref`-feature box-generation helpers (anchor names + link hrefs/URIs,
 /// AC-3.25). The gated-only body lives in its own module file so its branches
 /// stay out of the default coverage surface; exercised by `--features xref`.
 #[cfg(feature = "xref")]
 #[path = "boxgen_xref.rs"]
-mod xref;
+pub(super) mod xref;
 
 #[cfg(test)]
 mod tests {

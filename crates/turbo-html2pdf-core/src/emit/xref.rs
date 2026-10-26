@@ -1,9 +1,10 @@
-//! Internal links & cross-references (`xref` feature, AC-3.25). Two-pass over the
+//! Links & cross-references (`xref` feature, AC-3.25). Two-pass over the
 //! paginated pages: pass 1 ([`Xref::collect`]) walks every fragment to record
-//! each `<t:anchor name>`'s page + position (a named GoTo destination) and each
-//! `<a href="#name">`'s page + rectangle (a Link annotation); pass 2 writes a
-//! `/Dests` dictionary on the catalog plus a per-page `/Annots` array of Link
-//! annotations whose GoTo action targets the matching destination.
+//! each `<t:anchor>` / HTML `id` destination's page + position (a named GoTo
+//! destination) and each `<a href="…">`'s page + rectangle (a Link annotation,
+//! either internal `GoTo` for `#name` or external `URI` for URLs); pass 2 writes
+//! a `/Dests` dictionary on the catalog plus a per-page `/Annots` array of Link
+//! annotations.
 //!
 //! Coordinates flip from the galley (px, y-down) into PDF user space (pt, y-up)
 //! exactly as the painter does, so a link rect and its dest land where the
@@ -14,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use pdf_writer::{Finish, Name, Pdf, Rect, Ref};
+use pdf_writer::{Finish, Name, Pdf, Rect, Ref, Str};
 
 use crate::layout::fragment::Fragment;
 use crate::paginate::Page;
@@ -30,10 +31,18 @@ struct Dest {
     page_height_pt: f32,
 }
 
-/// One internal link: the destination name it targets, its galley rectangle
-/// (px), and the host page height (pt) for the y-flip.
+/// What a PDF `/Subtype /Link` annotation activates when clicked.
+enum LinkAction {
+    /// Jump to a named destination in `/Dests` (`/S /GoTo /D /name`).
+    GoTo(String),
+    /// Open an external URI (`/S /URI /URI (…)`).
+    Uri(String),
+}
+
+/// One link annotation: the action it triggers, its galley rectangle (px),
+/// and the host page height (pt) for the y-flip.
 struct Link {
-    target: String,
+    action: LinkAction,
     x: f32,
     y: f32,
     width: f32,
@@ -99,7 +108,7 @@ impl Xref {
     }
 
     /// Write one Link annotation object per link (page then document order), each
-    /// a `GoTo` action to its named destination over the fragment's rectangle.
+    /// carrying a `GoTo` or `URI` action over the fragment's rectangle.
     pub(crate) fn write_links(&self, pdf: &mut Pdf, link_refs: &[Ref]) {
         let mut refs = link_refs.iter();
         for page in &self.links {
@@ -114,6 +123,17 @@ impl Xref {
 /// The four paint bands of a page, matching the per-page painter's order.
 fn bands(page: &Page) -> [&[Fragment]; 4] {
     [&page.body, &page.header, &page.footer, &page.footnotes]
+}
+
+/// Extract a link action from a fragment's `xref` metadata, if any.
+fn fragment_link_action(frag: &Fragment) -> Option<LinkAction> {
+    if let Some(target) = &frag.xref.link_href {
+        return Some(LinkAction::GoTo(target.clone()));
+    }
+    frag.xref
+        .link_uri
+        .as_ref()
+        .map(|uri| LinkAction::Uri(uri.clone()))
 }
 
 /// Record a fragment's anchor and/or link, then recurse into its children.
@@ -132,9 +152,9 @@ fn walk(
             page_height_pt,
         });
     }
-    if let Some(target) = &frag.xref.link_href {
+    if let Some(action) = fragment_link_action(frag) {
         links.push(Link {
-            target: target.clone(),
+            action,
             x: frag.x,
             y: frag.y,
             width: frag.width,
@@ -147,17 +167,27 @@ fn walk(
     }
 }
 
-/// Write a single Link annotation: its rectangle plus a `GoTo` action to the
-/// named destination, with no visible border so it doesn't paint a box.
+/// Write a single Link annotation: its rectangle plus a `GoTo` or `URI` action,
+/// with no visible border so it doesn't paint a box.
 fn write_link(pdf: &mut Pdf, id: Ref, link: &Link) {
     let mut annot = pdf.annotation(id);
     annot.subtype(pdf_writer::types::AnnotationType::Link);
     annot.rect(link_rect(link));
     annot.border(0.0, 0.0, 0.0, None);
-    annot
-        .action()
-        .action_type(pdf_writer::types::ActionType::GoTo)
-        .destination_named(Name(link.target.as_bytes()));
+    let mut action = annot.action();
+    match &link.action {
+        LinkAction::GoTo(target) => {
+            action
+                .action_type(pdf_writer::types::ActionType::GoTo)
+                .destination_named(Name(target.as_bytes()));
+        }
+        LinkAction::Uri(uri) => {
+            action
+                .action_type(pdf_writer::types::ActionType::Uri)
+                .uri(Str(uri.as_bytes()));
+        }
+    }
+    action.finish();
     annot.finish();
 }
 
